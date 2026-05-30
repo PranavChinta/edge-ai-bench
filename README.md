@@ -89,7 +89,7 @@ python layer4_profiling/roofline.py --peak-flops 8.0 --peak-bw 25.6
 
 ---
 
-### Layer 5 — Android ARM64 cross-compilation 🔄 In progress
+### Layer 5 — Android ARM64 cross-compilation ✅ Done
 
 CMake toolchain file to cross-compile the Layer 2 runner for Android `arm64-v8a` using the Android NDK and an ONNX Runtime Android prebuilt.
 
@@ -108,6 +108,8 @@ cmake --build build-android
 
 ## Results
 
+**Desktop — Intel i7, Windows 11, ORT 1.26.0, single thread**
+
 | Layer | Metric | FP32 | INT8 (dynamic) |
 |-------|--------|------|----------------|
 | 2 / 3 | Mean latency (ms) | 7.363 | 151.303 |
@@ -121,8 +123,21 @@ cmake --build build-android
 | 4 | Measured throughput (GFLOP/s) | 40.74 | 1.98 |
 | 4 | Roofline bound | compute-bound | compute-bound |
 
-> Model: MobileNetV2 (IMAGENET1K_V1, 3.5M params). ORT 1.26.0, 100 warm-up + 100 timed runs, batch=1, input [1, 3, 224, 224], single thread, Windows 11.
-> Roofline: 300 MFLOPs per pass, peak compute 192 GFLOP/s (AVX2 FP32), peak BW 45 GB/s, ridge point 4.27 FLOP/byte.
+**Android — Samsung Galaxy A23 5G (Snapdragon 695, ARM Cortex-A78), ORT 1.21.0, 1 warm-up + 100 runs**
+
+| Layer | Metric | FP32 |
+|-------|--------|------|
+| 5 | Mean latency (ms) | 36.208 |
+| 5 | Min latency (ms) | 35.948 |
+| 5 | Max latency (ms) | 36.812 |
+| 5 | P50 latency (ms) | 36.194 |
+| 5 | P95 latency (ms) | 36.375 |
+| 5 | P99 latency (ms) | 36.699 |
+| 5 | Peak RSS (MB) | 39.71 |
+
+> Model: MobileNetV2 (IMAGENET1K_V1, 3.5M params), input [1, 3, 224, 224].
+> Desktop roofline: 300 MFLOPs per pass, peak compute 192 GFLOP/s (AVX2 FP32), peak BW 45 GB/s, ridge point 4.27 FLOP/byte.
+> Android is 4.9x slower than desktop (36.2ms vs 7.4ms) — no AVX2, single Cortex-A78 core vs Intel i7.
 
 ### Roofline chart
 

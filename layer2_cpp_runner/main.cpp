@@ -49,10 +49,15 @@ int main(int argc, char* argv[]) {
     const char* input_names[]  = {input_name_alloc.get()};
     const char* output_names[] = {output_name_alloc.get()};
 
-    // Build input tensor: batch=1, features=128
-    constexpr int64_t BATCH = 1, FEATURES = 128;
-    std::array<int64_t, 2> input_shape{BATCH, FEATURES};
-    std::vector<float> input_data(BATCH * FEATURES, 1.0f);
+    // Infer input shape from model metadata; replace dynamic dims with 1
+    auto type_info   = session.GetInputTypeInfo(0);
+    auto tensor_info = type_info.GetTensorTypeAndShapeInfo();
+    std::vector<int64_t> input_shape = tensor_info.GetShape();
+    for (auto& d : input_shape) if (d < 1) d = 1;   // replace -1 (dynamic) with 1
+
+    size_t input_elems = 1;
+    for (auto d : input_shape) input_elems *= static_cast<size_t>(d);
+    std::vector<float> input_data(input_elems, 1.0f);
 
     auto mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
     auto make_tensor = [&]() {
@@ -92,7 +97,10 @@ int main(int argc, char* argv[]) {
 
     printf("\n=== Inference Benchmark ===\n");
     printf("Model         : %s\n", model_path.c_str());
-    printf("Input shape   : [%lld, %lld]\n", (long long)BATCH, (long long)FEATURES);
+    printf("Input shape   : [");
+    for (size_t i = 0; i < input_shape.size(); ++i)
+        printf("%s%lld", i ? ", " : "", (long long)input_shape[i]);
+    printf("]\n");
     printf("Runs          : %d (+ %d warm-up)\n", RUNS, WARMUP);
     printf("\nLatency (ms):\n");
     printf("  Mean        : %.3f\n", mean);
