@@ -119,8 +119,14 @@ cmake --build build-android
 | 3 | Mean abs logit delta | — | 0.3256 |
 
 > Model: MobileNetV2 (IMAGENET1K_V1, 3.5M params). ORT 1.26.0, 100 warm-up + 100 timed runs, batch=1, input [1, 3, 224, 224], single thread, Windows 11.
->
-> **Why INT8 is slower:** `quantize_dynamic` quantizes weights to INT8 but dequantizes activations at runtime. For Conv2d-heavy networks like MobileNetV2, this adds casting overhead that outweighs the INT8 GEMM gains. Static (QDQ) quantization with a calibration dataset is required to achieve speedup on CNN architectures.
+
+### Why INT8 was slower here
+
+These numbers reflect pure CPU execution — no GPU, no dedicated AI accelerator. The dominant operation in MobileNetV2 is Conv2d: a filter grid slides across every feature map, computing multiply-accumulate at each position, repeated across hundreds of channels and layers per inference. On an Intel i7, floating-point Conv2d runs on AVX2, Intel's SIMD instruction set that processes 8 float32 values in a single clock cycle using kernels that have been hand-tuned for decades. The FP32 path is already close to what this CPU can physically sustain.
+
+Dynamic quantization (`quantize_dynamic`) compresses the model weights from float32 down to INT8 — which is why the file shrank 3.79x — but it does not keep the activations in INT8 during inference. Before every forward pass it must dequantize the weights back to float32, perform the convolution in float32 on the AVX2 path, and then discard the result. The conversion overhead is added on top of the same FP32 compute, not instead of it, so the net effect is a slowdown.
+
+Static QDQ (quantize-dequantize) quantization avoids this by calibrating activation ranges offline using a representative dataset, then running the entire inference pass in INT8: weights stay INT8, activations stay INT8, and the multiply-accumulate is done in INT8 GEMM throughout. That is the production approach and is where the real speedup lives. On this Intel CPU the INT8 kernels are still competing against a very strong AVX2 FP32 baseline, so gains would be modest. On a mobile CPU without AVX2, the FP32 baseline is much weaker and INT8 gains are larger — which is the exact reason Qualcomm's Hexagon DSP exists: it is purpose-built to execute INT8 Conv2d at high throughput the same way AVX2 executes FP32 Conv2d on Intel, making static INT8 quantization the primary optimization lever for on-device inference.
 
 ---
 
