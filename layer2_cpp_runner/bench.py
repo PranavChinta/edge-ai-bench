@@ -53,8 +53,11 @@ def main() -> None:
 
     input_name  = sess.get_inputs()[0].name
     output_name = sess.get_outputs()[0].name
-    batch, features = 1, 128
-    dummy = np.ones((batch, features), dtype=np.float32)
+    # Shape is inferred from the model's input metadata
+    input_meta = sess.get_inputs()[0]
+    shape = [d if isinstance(d, int) and d > 0 else 1 for d in input_meta.shape]
+    dummy = np.ones(shape, dtype=np.float32)
+    batch, features = shape[0], shape[-1]
 
     # Warm-up
     for _ in range(WARMUP):
@@ -76,7 +79,7 @@ def main() -> None:
     print(f"\n=== Inference Benchmark ===")
     print(f"Model         : {args.model}")
     print(f"ORT version   : {ort.__version__}")
-    print(f"Input shape   : [{batch}, {features}]")
+    print(f"Input shape   : {shape}")
     print(f"Runs          : {RUNS} (+ {WARMUP} warm-up)")
     print(f"\nLatency (ms):")
     print(f"  Mean        : {mean_ms:.3f}")

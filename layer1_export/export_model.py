@@ -1,38 +1,24 @@
 """
-Layer 1: PyTorch MLP definition and ONNX export.
+Layer 1: Load pretrained MobileNetV2 and export to ONNX.
 """
 
+import os
 import torch
-import torch.nn as nn
-
-
-class MLP(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(128, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 10),
-        )
-
-    def forward(self, x):
-        return self.net(x)
+from torchvision.models import mobilenet_v2, MobileNet_V2_Weights
 
 
 def main():
-    model = MLP()
+    weights = MobileNet_V2_Weights.IMAGENET1K_V1
+    model = mobilenet_v2(weights=weights)
     model.eval()
 
-    print("Model architecture:")
-    print(model)
     total_params = sum(p.numel() for p in model.parameters())
-    print(f"\nTotal parameters: {total_params:,}")
+    print(f"Model         : MobileNetV2 (IMAGENET1K_V1)")
+    print(f"Parameters    : {total_params:,}")
 
-    dummy_input = torch.randn(1, 128)
+    dummy_input = torch.zeros(1, 3, 224, 224)
     output = model(dummy_input)
-    print(f"Output shape: {output.shape}")
+    print(f"Output shape  : {tuple(output.shape)}")
 
     export_path = "model.onnx"
     torch.onnx.export(
@@ -46,9 +32,8 @@ def main():
         dynamo=False,
     )
 
-    import os
-    size_kb = os.path.getsize(export_path) / 1024
-    print(f"\nExport succeeded: {export_path} ({size_kb:.1f} KB)")
+    size_mb = os.path.getsize(export_path) / (1024 ** 2)
+    print(f"\nExport succeeded: {export_path} ({size_mb:.1f} MB)")
 
 
 if __name__ == "__main__":

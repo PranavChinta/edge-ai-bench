@@ -36,7 +36,7 @@ edge-ai-bench/
 
 ### Layer 1 — PyTorch export to ONNX ✅ Done
 
-Defines a 3-layer MLP (128 → 256 → 128 → 10, ReLU activations, 67 K parameters) in PyTorch and exports it to `model.onnx` using the TorchScript exporter.
+Loads pretrained **MobileNetV2** (`IMAGENET1K_V1`, 3.5 M parameters) from torchvision and exports it to `model.onnx` (13.3 MB) using the TorchScript exporter with a standard ImageNet input shape of `[1, 3, 224, 224]`.
 
 **Run:**
 ```bash
@@ -110,15 +110,15 @@ cmake --build build-android
 
 | Layer | Metric | FP32 | INT8 |
 |-------|--------|------|------|
-| 2 — ORT benchmark | Mean latency (ms) | 0.014 | — |
-| 2 — ORT benchmark | Min latency (ms) | 0.013 | — |
-| 2 — ORT benchmark | Max latency (ms) | 0.039 | — |
-| 2 — ORT benchmark | P95 latency (ms) | 0.017 | — |
-| 2 — ORT benchmark | Peak RSS (MB) | 55.55 | — |
+| 2 — ORT benchmark | Mean latency (ms) | 7.528 | TBD |
+| 2 — ORT benchmark | Min latency (ms) | 7.008 | TBD |
+| 2 — ORT benchmark | Max latency (ms) | 8.773 | TBD |
+| 2 — ORT benchmark | P95 latency (ms) | 8.214 | TBD |
+| 2 — ORT benchmark | Peak RSS (MB) | 81.00 | TBD |
 | 3 — Quantization | Max abs output error | — | TBD |
 | 3 — Quantization | Mean abs output error | — | TBD |
 
-> Benchmarked with ORT 1.26.0, 100 runs + 1 warm-up, batch=1, input shape [1, 128], single thread, Windows 11.
+> Model: MobileNetV2 (ImageNet pretrained, 3.5M params). ORT 1.26.0, 100 runs + 1 warm-up, batch=1, input [1, 3, 224, 224], single thread, Windows 11.
 
 ---
 
