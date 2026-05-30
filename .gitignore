@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyd
+*.egg-info/
+.venv/
+dist/
+build/
+build-android/
+*.exe
+*.obj
+*.o
+*.ilk
+*.pdb
+roofline.png
+model_int8.onnx
