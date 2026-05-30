@@ -124,17 +124,15 @@ Desktop — Intel i7, Windows 11, ORT 1.26.0, single thread, 100 warm-up + 100 t
 
 Android — Samsung Galaxy A23 5G, Snapdragon 695 (Cortex-A78), ORT 1.21.0, 1 warm-up + 100 timed runs
 
-| Metric | FP32 |
-|--------|------|
-| Mean latency (ms) | 36.208 |
-| Min latency (ms) | 35.948 |
-| Max latency (ms) | 36.812 |
-| P50 latency (ms) | 36.194 |
-| P95 latency (ms) | 36.375 |
-| P99 latency (ms) | 36.699 |
-| Peak RSS (MB) | 39.71 |
+| Metric | Desktop (Intel i7) | Android (Snapdragon 695) | Difference |
+|--------|--------------------|--------------------------|------------|
+| Mean latency | 7.363 ms | 36.208 ms | 4.9x slower |
+| Peak RSS | 302 MB | 39.71 MB | 87% lower |
+| Model size | 13.3 MB | 13.3 MB | identical |
 
-The phone is 4.9x slower than the desktop (36.2 ms vs 7.4 ms). The RSS is also 87% lower (39 MB vs 303 MB) — Android's allocator reclaims pages much more aggressively. The latency gap comes down to instruction width: Cortex-A78 runs NEON at 128-bit (4 floats/cycle) while the i7 runs AVX2 at 256-bit (8 floats/cycle), with a lower clock on top.
+- NEON runs 128-bit wide (4 floats/cycle); AVX2 runs 256-bit (8 floats/cycle) at a higher clock — that instruction-width and frequency gap accounts for most of the 4.9x latency difference.
+- Android's kernel reclaims physical pages aggressively between allocations, which is why RSS sits 87% lower on the phone despite running the same model weights.
+- A dedicated INT8 accelerator (NPU or DSP) would close the latency gap without the power cost of scaling the CPU clock or adding SIMD width.
 
 Roofline parameters: 300 MFLOPs per forward pass, peak compute 192 GFLOP/s (AVX2 fp32), peak bandwidth 45 GB/s, ridge point 4.27 FLOP/byte.
 
