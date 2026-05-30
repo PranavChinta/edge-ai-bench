@@ -11,5 +11,4 @@ build-android/
 *.o
 *.ilk
 *.pdb
-roofline.png
 model_int8.onnx

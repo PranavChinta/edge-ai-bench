@@ -78,7 +78,7 @@ python layer3_quantization/quantize_and_compare.py --model model.onnx
 
 ---
 
-### Layer 4 — Roofline profiling 🔄 In progress
+### Layer 4 — Roofline profiling ✅ Done
 
 Computes the arithmetic intensity (FLOP / byte) for each linear layer and overlays those points on a hardware roofline (configurable peak GFLOP/s and memory bandwidth). Saves `roofline.png`.
 
@@ -117,8 +117,16 @@ cmake --build build-android
 | 2 / 3 | Peak RSS (MB) | 302.59 | 323.29 |
 | 2 / 3 | Model size (MB) | 13.3 | 3.5 (3.79x smaller) |
 | 3 | Mean abs logit delta | — | 0.3256 |
+| 4 | Arithmetic intensity (FLOP/byte) | 21.51 | 81.74 |
+| 4 | Measured throughput (GFLOP/s) | 40.74 | 1.98 |
+| 4 | Roofline bound | compute-bound | compute-bound |
 
 > Model: MobileNetV2 (IMAGENET1K_V1, 3.5M params). ORT 1.26.0, 100 warm-up + 100 timed runs, batch=1, input [1, 3, 224, 224], single thread, Windows 11.
+> Roofline: 300 MFLOPs per pass, peak compute 192 GFLOP/s (AVX2 FP32), peak BW 45 GB/s, ridge point 4.27 FLOP/byte.
+
+### Roofline chart
+
+![MobileNetV2 Roofline](layer4_profiling/roofline.png)
 
 ### Why INT8 was slower here
 
