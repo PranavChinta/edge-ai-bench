@@ -67,7 +67,7 @@ python layer2_cpp_runner/bench.py model.onnx
 
 ---
 
-### Layer 3 — INT8 post-training quantization 🔄 In progress
+### Layer 3 — INT8 post-training quantization ✅ Done
 
 Applies ONNX Runtime's `quantize_dynamic` (weight-only INT8) to `model.onnx`, then runs both the FP32 and INT8 models over 256 random inputs and reports max / mean absolute output error.
 
@@ -108,17 +108,19 @@ cmake --build build-android
 
 ## Results
 
-| Layer | Metric | FP32 | INT8 |
-|-------|--------|------|------|
-| 2 — ORT benchmark | Mean latency (ms) | 7.528 | TBD |
-| 2 — ORT benchmark | Min latency (ms) | 7.008 | TBD |
-| 2 — ORT benchmark | Max latency (ms) | 8.773 | TBD |
-| 2 — ORT benchmark | P95 latency (ms) | 8.214 | TBD |
-| 2 — ORT benchmark | Peak RSS (MB) | 81.00 | TBD |
-| 3 — Quantization | Max abs output error | — | TBD |
-| 3 — Quantization | Mean abs output error | — | TBD |
+| Layer | Metric | FP32 | INT8 (dynamic) |
+|-------|--------|------|----------------|
+| 2 / 3 | Mean latency (ms) | 7.363 | 151.303 |
+| 2 / 3 | Min latency (ms) | 6.962 | 113.792 |
+| 2 / 3 | P95 latency (ms) | 7.861 | 275.580 |
+| 2 / 3 | P99 latency (ms) | 7.957 | 297.414 |
+| 2 / 3 | Peak RSS (MB) | 302.59 | 323.29 |
+| 2 / 3 | Model size (MB) | 13.3 | 3.5 (3.79x smaller) |
+| 3 | Mean abs logit delta | — | 0.3256 |
 
-> Model: MobileNetV2 (ImageNet pretrained, 3.5M params). ORT 1.26.0, 100 runs + 1 warm-up, batch=1, input [1, 3, 224, 224], single thread, Windows 11.
+> Model: MobileNetV2 (IMAGENET1K_V1, 3.5M params). ORT 1.26.0, 100 warm-up + 100 timed runs, batch=1, input [1, 3, 224, 224], single thread, Windows 11.
+>
+> **Why INT8 is slower:** `quantize_dynamic` quantizes weights to INT8 but dequantizes activations at runtime. For Conv2d-heavy networks like MobileNetV2, this adds casting overhead that outweighs the INT8 GEMM gains. Static (QDQ) quantization with a calibration dataset is required to achieve speedup on CNN architectures.
 
 ---
 
