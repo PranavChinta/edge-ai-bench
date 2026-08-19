@@ -12,3 +12,4 @@ build-android/
 *.ilk
 *.pdb
 model_int8.onnx
+model_int8_qdq.onnx

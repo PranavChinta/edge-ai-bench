@@ -18,9 +18,11 @@ edge-ai-bench/
 │   ├── bench.py                       # Python equivalent, runs on any OS
 │   └── CMakeLists.txt                 # requires ONNXRUNTIME_ROOT
 ├── layer3_quantization/
-│   └── quantize_and_compare.py        # INT8 dynamic quantization + latency comparison
+│   ├── quantize_and_compare.py        # INT8 dynamic quantization + latency comparison
+│   └── quantize_static.py             # INT8 static QDQ quantization (for Android; dynamic INT8 doesn't run there)
 ├── layer4_profiling/
-│   └── roofline.py                    # roofline model plot
+│   ├── roofline.py                    # roofline model plot (desktop, AVX2)
+│   └── roofline_phone.py              # roofline model plot (phone, NEON)
 └── layer5_android/
     ├── CMakeLists.txt                 # Android NDK cross-compile for arm64-v8a
     └── runner_android                 # prebuilt binary (Snapdragon 695, android-29)
@@ -103,6 +105,14 @@ adb push runner_android libonnxruntime.so model.onnx /data/local/tmp/
 adb shell "cd /data/local/tmp && LD_LIBRARY_PATH=. ./runner_android model.onnx"
 ```
 
+**INT8 on Android:** the dynamic-quantized `model_int8.onnx` from Layer 3 crashes on this ORT 1.21.0 Android build — `Could not find an implementation for ConvInteger(10)`. Dynamic quantization turns every Conv into a ConvInteger node, and this CPU build has no kernel registered for it (confirmed on the very first conv layer, not an edge case). `layer3_quantization/quantize_static.py` produces a static QDQ-quantized model instead (calibrated offline on synthetic inputs, emits QLinearConv nodes, which do have broad CPU kernel support including ARM64):
+
+```bash
+python layer3_quantization/quantize_static.py --model model.onnx --out model_int8_qdq.onnx
+adb push model_int8_qdq.onnx /data/local/tmp/
+adb shell "cd /data/local/tmp && LD_LIBRARY_PATH=. ./runner_android model_int8_qdq.onnx"
+```
+
 ---
 
 ## Results
@@ -134,11 +144,36 @@ Android — Samsung Galaxy A23 5G, Snapdragon 695 (Cortex-A78), ORT 1.21.0, 1 wa
 - Android's kernel reclaims physical pages aggressively between allocations, which is why RSS sits 87% lower on the phone despite running the same model weights.
 - A dedicated INT8 accelerator (NPU or DSP) would close the latency gap without the power cost of scaling the CPU clock or adding SIMD width.
 
-Roofline parameters: 300 MFLOPs per forward pass, peak compute 192 GFLOP/s (AVX2 fp32), peak bandwidth 45 GB/s, ridge point 4.27 FLOP/byte.
+Android INT8 — same device, static QDQ quantization (dynamic quantization crashes on this ORT build, see above)
 
-### Roofline chart
+| Metric | FP32 | INT8 (static QDQ) | Difference |
+|--------|------|--------------------|------------|
+| Mean latency (ms) | 36.208 | 12.810 | 2.83x faster |
+| Min latency (ms) | — | 12.619 | — |
+| P95 latency (ms) | — | 13.037 | — |
+| P99 latency (ms) | — | 13.193 | — |
+| Peak RSS (MB) | 39.71 | 32.30 | 19% lower |
+| Model size (MB) | 13.3 | 3.5 | 3.81x smaller |
+| Throughput (GFLOP/s) | 8.29 | 23.42 | — |
+| Roofline bound | compute-bound | compute-bound | — |
 
-![MobileNetV2 Roofline](layer4_profiling/roofline.png)
+Unlike on desktop, INT8 is a clear win on the phone. Static QDQ quantization keeps both weights *and* activations in INT8 through the whole Conv2d path via QLinearConv, so there's no dequantize-then-run-FP32 tax like there is with dynamic quantization — and NEON's INT8 dot-product path has more headroom over its own FP32 path than AVX2 does over its FP32 path, which is already close to saturating the desktop CPU. This is exactly the outcome the desktop section below predicted: static QDQ, not dynamic quantization, is the mobile speedup lever.
+
+Roofline parameters — Desktop: 300 MFLOPs/pass, peak compute 192 GFLOP/s (AVX2 fp32, measured), peak bandwidth 45 GB/s (measured), ridge point 4.27 FLOP/byte. Phone: 300 MFLOPs/pass, peak compute 35.2 GFLOP/s (NEON fp32, 1 core @ 2.2 GHz, **estimated** — see caveat below), peak bandwidth 17.0 GB/s (Snapdragon 695 LPDDR4X @ 4266 MT/s, **vendor-quoted, not independently measured**), ridge point 2.07 FLOP/byte.
+
+> **Caveat on phone hardware numbers:** the desktop's 192 GFLOP/s and 45 GB/s are the project's own measured figures. The phone's 35.2 GFLOP/s is *not* a Qualcomm-published spec — it's estimated the same way as the desktop figure (SIMD lanes × FMA × clock), applied to a single Cortex-A78 core at 2.2 GHz with 2 NEON FMA pipelines (per ARM's own architecture description), since ORT ran single-threaded (`intra_op_num_threads=1`) on both platforms. The 17.0 GB/s bandwidth figure is a commonly cited aggregator/vendor number for this SoC's LPDDR4X configuration, not something measured on this specific device. Both phone numbers are less standardized than the desktop's and should be treated as reasonable estimates, not verified specs, if this comes up.
+
+### Roofline charts
+
+Desktop (Intel i7, AVX2):
+
+![MobileNetV2 Roofline — Desktop](layer4_profiling/roofline.png)
+
+Phone (Snapdragon 695, NEON, estimated hardware ceiling):
+
+![MobileNetV2 Roofline — Phone](layer4_profiling/roofline_phone.png)
+
+Both FP32 and INT8 land compute-bound on both platforms — arithmetic intensity (21.5 / 81.7 FLOP/byte) sits well above each device's ridge point (4.27 desktop, 2.07 phone). Attained throughput is well below the theoretical compute ceiling on both platforms too (desktop fp32: 40.7 of 192 GFLOP/s, ~21%; phone fp32: 8.3 of 35.2 GFLOP/s, ~24%), which is typical for a real Conv2d-heavy workload against a peak-lanes theoretical ceiling — framework overhead, cache effects, and non-FMA instructions all eat into the achievable fraction.
 
 ### Why INT8 was slower here
 
@@ -147,6 +182,8 @@ These numbers reflect pure CPU execution — no GPU, no dedicated AI accelerator
 Dynamic quantization (`quantize_dynamic`) compresses the model weights from float32 down to INT8 — which is why the file shrank 3.79x — but it does not keep the activations in INT8 during inference. Before every forward pass it must dequantize the weights back to float32, perform the convolution in float32 on the AVX2 path, and then discard the result. The conversion overhead is added on top of the same FP32 compute, not instead of it, so the net effect is a slowdown.
 
 Static QDQ (quantize-dequantize) quantization avoids this by calibrating activation ranges offline using a representative dataset, then running the entire inference pass in INT8: weights stay INT8, activations stay INT8, and the multiply-accumulate is done in INT8 GEMM throughout. That is the production approach and is where the real speedup lives. On this Intel CPU the INT8 kernels are still competing against a very strong AVX2 FP32 baseline, so gains would be modest. On a mobile CPU without AVX2, the FP32 baseline is much weaker and INT8 gains are larger, making static INT8 quantization the primary optimization lever for on-device AI inference.
+
+This plays out exactly as predicted above: static QDQ INT8 on the phone is 2.83x faster than phone FP32 (12.810 ms vs 36.208 ms), whereas dynamic INT8 on desktop was 20.6x *slower* than desktop FP32 (151.303 ms vs 7.363 ms) — and dynamic INT8 doesn't even run on the phone's ORT build at all (missing `ConvInteger` kernel). Same quantization concept, opposite outcome, because the desktop AVX2 FP32 baseline had little headroom left to beat and dynamic quantization added conversion overhead on top of it, while the phone's weaker NEON FP32 baseline left real headroom for INT8 GEMM to win — provided the quantization format (static QDQ, not dynamic) actually keeps the compute path in INT8 end to end.
 
 ---
 
