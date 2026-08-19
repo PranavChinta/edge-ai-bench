@@ -130,7 +130,7 @@ wouldn't be as dramatic.
 One more wrinkle: there are two different ways to compress a model, and it
 mattered which one we used. Dynamic quantization compresses parts of the model on the
 fly, freshly, every single time it runs. This approach doesn't run on this phone at all as the phone's software doesn't know how to unpack it, and the app crashes the moment it starts. 
-The other approach is static quantization and does the compressing once, ahead of time, using some sample data as a rehearsal(like zipping a file once, carefully, and saving the smaller finished copy to open directly from then on). This approach is the one behind the numbers above, and it's the only one that actually works here.
+The other approach is static quantization and does the compressing once, ahead of time, using some sample data as a rehearsal. This approach is the one behind the numbers above, and it's the only one that actually works here.
 
 ## Reading the chart
 
