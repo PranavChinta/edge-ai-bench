@@ -132,40 +132,27 @@ Desktop — Intel i7, Windows 11, ORT 1.26.0, single thread, 100 warm-up + 100 t
 | Throughput (GFLOP/s) | 40.74 | 1.98 |
 | Roofline bound | compute-bound | compute-bound |
 
-Android — same benchmark, run on a Samsung Galaxy A23 5G (Snapdragon 695 chip) over USB
+### On a phone
 
-| Metric | Desktop (Intel i7) | Android (Snapdragon 695) | Difference |
-|--------|--------------------|--------------------------|------------|
-| Mean latency | 7.363 ms | 36.208 ms | 4.9x slower |
-| Peak RSS | 302 MB | 39.71 MB | 87% lower |
-| Model size | 13.3 MB | 13.3 MB | identical |
+We ran the same model on a real Android phone (a Samsung Galaxy A23 5G), connected to a laptop by USB cable, to see how it behaves on something people actually carry around.
 
-- The phone being slower is expected — it's running on a small, battery-efficient mobile chip instead of a desktop processor built for raw speed.
-- The phone actually used 87% less memory than the desktop for the same model, because Android manages memory more aggressively, reclaiming it between runs instead of holding onto it.
-- A phone with a dedicated AI chip (increasingly common in newer phones) could close most of this speed gap — this test only used the phone's general-purpose processor, not any specialized AI hardware.
+The plain, full-size model took about 36 milliseconds to make one prediction on the phone, compared to about 7 milliseconds on the laptop — roughly 5 times slower. That's expected: phones use smaller, battery-friendly chips instead of the more powerful chips built for laptops and desktops, so a bit of a slowdown is normal. Interestingly, the phone used far less memory to do it — about 40 MB, versus roughly 300 MB on the laptop — because phones are much more aggressive about freeing up memory the moment it's not needed.
 
-Android, INT8 — same phone, running the INT8 model that actually works on it (the Layer 3 version crashes here, see the note above)
+Next we tried the same trick we tried on the laptop: shrinking the model down to make it smaller and hopefully faster. On the laptop, shrinking the model backfired and actually made it much slower. On the phone, the opposite happened — shrinking it made the model almost 3 times faster, cutting the time per prediction from about 36 milliseconds down to about 13 milliseconds. It also used a bit less memory (about 32 MB instead of 40 MB) and took up about a quarter of the storage space (3.5 MB instead of 13.3 MB).
 
-| Metric | FP32 | INT8 (static QDQ) | Difference |
-|--------|------|--------------------|------------|
-| Mean latency (ms) | 36.208 | 12.810 | 2.83x faster |
-| Min latency (ms) | — | 12.619 | — |
-| P95 latency (ms) | — | 13.037 | — |
-| P99 latency (ms) | — | 13.193 | — |
-| Peak RSS (MB) | 39.71 | 32.30 | 19% lower |
-| Model size (MB) | 13.3 | 3.5 | 3.81x smaller |
+So why did the exact same trick help on the phone but hurt on the laptop? Laptop chips already come with very fast built-in shortcuts for the kind of math AI models rely on, so there wasn't much room left to improve — and the shrinking process itself adds a small amount of extra work, which is why it ended up slower overall. Phone chips don't have those same shortcuts, so they start out noticeably slower at that kind of math. That leaves a lot more room for a smaller, simpler model to make a real difference — which is exactly what we saw.
 
-Shrinking the model to INT8 made it 2.8x faster on the phone (12.8 ms vs 36.2 ms) — the opposite of the desktop, where INT8 was actually much slower. The reason: the desktop's processor already has very fast built-in instructions for regular math, so there wasn't much room for a leaner model to help, and the quick quantization shortcut added extra conversion overhead on top of that. The phone's processor doesn't have those fast instructions, so its regular-math speed was much lower to begin with — leaving real room for a leaner INT8 model to make a difference, as long as it's quantized the more thorough way (the one that doesn't crash).
+One extra wrinkle: there are two different ways to shrink a model, and the quick, simple one — the one that worked fine on the laptop — doesn't run on this phone at all; it just crashes on startup. A slower, more careful shrinking method (one that "rehearses" on sample data first) had to be used instead to get a working, faster model on the phone. (See the build steps above for the technical details.)
 
-### Roofline charts
+### Charts
 
-A "roofline chart" shows how close a model's actual speed comes to the fastest a chip could theoretically go, given how much data it has to move around per calculation. Both charts below show real performance landing well under that theoretical ceiling — normal for real-world code, which loses some efficiency to overhead a pure theoretical number doesn't account for.
+The two charts below show how close each version's real-world speed came to the fastest that chip could ever physically go, based on its specs. The closer a dot sits to the top line, the more of the chip's raw potential that version is actually using.
 
-Desktop (Intel i7):
+Laptop:
 
 ![MobileNetV2 Roofline — Desktop](layer4_profiling/roofline.png)
 
-Phone (Snapdragon 695) — note: the phone's theoretical ceiling was estimated from publicly listed chip specs rather than measured directly on this device, unlike the desktop's, so treat it as a reasonable estimate rather than a verified number:
+Phone — note: the phone's top-speed line here is an estimate based on publicly listed specs for its chip, not something we measured directly (unlike the laptop's line, which came from measurements on the actual machine), so treat it as a rough guide rather than an exact number:
 
 ![MobileNetV2 Roofline — Phone](layer4_profiling/roofline_phone.png)
 
